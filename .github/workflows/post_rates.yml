@@ -55,7 +55,7 @@ jobs:
           
           MESSAGE="💱 Arbitrage Canada → Cameroun
           
-1 CAD = ${FINAL_RATE} XAF"
+1 CAD = ${FINAL_RATE} XAF
 Taux Canada: ${CAD_RATE} CAD/USDT
 Taux Cameroun: ${XAF_RATE} XAF/USDT
 Marge appliquée: 3%     
