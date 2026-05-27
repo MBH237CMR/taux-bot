@@ -1,20 +1,67 @@
-name: Post Crypto Rates
+name: Post Arbitrage Canada-Cameroun
 
 on:
   schedule:
-    - cron: '0 * * * *' # Toutes les heures
+    - cron: '0 */1 *'  # Toutes les heures
   workflow_dispatch:
 
 jobs:
-  post:
+  arbitrage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - run: pip install requests
-      - run: python bot.py
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+      - name: Get Canada USDT/CAD P2P data
+        id: canada
+        run: |
+          DATA=$(curl -s -X POST https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search \
+            -H "Content-Type: application/json" \
+            -d '{"asset":"USDT","fiat":"CAD","merchantCheck":false,"page":1,"rows":10,"tradeType":"BUY","countries":[],"proMerchantAds":false,"publisherType":null}')
+          
+          # Filtre: enlève les annonces promues, prend les 5 premières, fait moyenne pondérée
+          AVG=$(echo "$DATA" | jq '[.data[] | select(.adv.isPromoted == false)] 
+            | .[0:5] 
+            | map((.adv.price | tonumber) * (.adv.surplusAmount | tonumber)) 
+            | add / map(.adv.surplusAmount | tonumber) | add')
+          echo "avg=$AVG" >> $GITHUB_OUTPUT
+
+      - name: Get Cameroon USDT/XAF P2P data
+        id: cameroon
+        run: |
+          DATA=$(curl -s -X POST https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search \
+            -H "Content-Type: application/json" \
+            -d '{"asset":"USDT","fiat":"XAF","merchantCheck":false,"page":1,"rows":10,"tradeType":"SELL","countries":["CM"],"proMerchantAds":false,"publisherType":null}')
+          
+          # Filtre: enlève les annonces promues, prend les 5 premières, fait moyenne pondérée
+          AVG=$(echo "$DATA" | jq '[.data[] | select(.adv.isPromoted == false)] 
+            | .[0:5] 
+            | map((.adv.price | tonumber) * (.adv.surplusAmount | tonumber)) 
+            | add / map(.adv.surplusAmount | tonumber) | add')
+          echo "avg=$AVG" >> $GITHUB_OUTPUT
+
+      - name: Calculate and send to Telegram
+        run: |
+          CAD_RATE=${{ steps.canada.outputs.avg }}
+          XAF_RATE=${{ steps.cameroon.outputs.avg }}
+          
+          if [ -z "$CAD_RATE" ] || [ -z "$XAF_RATE" ]; then
+            echo "Erreur: pas de données"
+            exit 1
+          fi
+          
+          # 1 CAD = XAF_RATE / CAD_RATE XAF
+          RAW_RATE=$(echo "scale=4; $XAF_RATE / $CAD_RATE" | bc -l)
+          
+          # Retire 3% de marge
+          FINAL_RATE=$(echo "scale=2; $RAW_RATE * 0.97" | bc -l)
+          
+          MESSAGE="💱 Arbitrage Canada → Cameroun
+          
+1 CAD = ${FINAL_RATE} XAF
+Taux Canada: ${CAD_RATE} CAD/USDT
+Taux Cameroun: ${XAF_RATE} XAF/USDT
+Marge appliquée: 3%
+          
+Mise à jour: $(TZ=Africa/Douala date '+%H:%M')"
+
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d text="$MESSAGE"
