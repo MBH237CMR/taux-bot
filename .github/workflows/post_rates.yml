@@ -1,16 +1,16 @@
-name: Taux change Canada-Cameroun
+name: Post Rates Canada to Cameroon
 
 on:
   schedule:
-    - cron: '0 *' # toutes les heures
+    - cron: '0 * * * *' # toutes les heures
   workflow_dispatch:
 
 jobs:
-  arbitrage:
+  update_rates:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Get Canada USDT/CAD Buy Rate from Binance
+    - name: Get Canada USDT/CAD Buy Rate
       id: canada_buy
       run: |
         DATA=$(curl -s -f -X POST "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search" \
@@ -21,20 +21,17 @@ jobs:
             "fiat": "CAD",
             "tradeType": "BUY",
             "page": 1,
-            "rows": 10,
-            "payTypes": [],
-            "publisherType": null
+            "rows": 10
           }')
 
-        # Moyenne pondérée des 10 premières annonces non pubs
         AVG=$(echo "$DATA" | jq '[.data[] | select(.adv.advertisementActivateStatus=="ON") | 
                 {price: (.adv.price | tonumber), amount: (.adv.tradableQuantity | tonumber)}] | 
                 map(.price * .amount) | add / map(.amount) | add')
 
-        echo "Canada Buy Rate: $AVG CAD"
+        echo "Canada Rate: $AVG CAD"
         echo "cad_rate=$AVG" >> $GITHUB_OUTPUT
 
-    - name: Get Cameroon USDT/XAF Sell Rate from Binance
+    - name: Get Cameroon USDT/XAF Sell Rate
       id: cameroon_sell
       run: |
         DATA=$(curl -s -f -X POST "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search" \
@@ -46,114 +43,8 @@ jobs:
             "tradeType": "SELL",
             "page": 1,
             "rows": 10,
-            "payTypes": [],
-            "publisherType": null,
             "countries": ["CM"]
           }')
 
         AVG=$(echo "$DATA" | jq '[.data[] | select(.adv.advertisementActivateStatus=="ON") | 
-                {price: (.adv.price | tonumber), amount: (.adv.tradableQuantity | tonumber)}] | 
-                map(.price * .amount) | add / map(.amount) | add')
-
-        echo "Cameroun Sell Rate: $AVG XAF"
-        echo "xaf_avg=$AVG" >> $GITHUB_OUTPUT
-
-    - name: Calculate Final Rate with 3% Fee
-      id: calculate
-      run: |
-        CAD_RATE=${{ steps.canada_buy.outputs.cad_rate }}
-        XAF_AVG=${{ steps.cameroon_sell.outputs.xaf_avg }}
-
-        GROSS_RATE=$(echo "scale=4; $XAF_AVG / $CAD_RATE" | bc -l)
-        FINAL_RATE=$(echo "scale=2; $GROSS_RATE * 0.97" | bc -l)
-
-        echo "Taux client: $FINAL_RATE XAF/CAD"
-        echo "final_rate=$FINAL_RATE" >> $GITHUB_OUTPUT
-
-    - name: Send to Telegram
-      env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: |
-        MESSAGE="💱 Taux Binance P2P Canada → Cameroun%0A%0A"
-        MESSAGE+="Canada Achat: ${{ steps.canada_buy.outputs.cad_rate }} CAD%0A"
-        MESSAGE+="Cameroun Vente: ${{ steps.cameroon_sell.outputs.xaf_avg }} XAF%0A"
-        MESSAGE+="💰 Taux client -3%: ${{ steps.calculate.outputs.final_rate }} XAF/CAD"
-
-        curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-          -d chat_id="${TELEGRAM_CHAT_ID}" \
-          -d text="$MESSAGE"          echo "Erreur: Calcul moyenne Canada échoué"
-          exit 1
-        fi
-
-        echo "Canada Buy AVG: $AVG CAD"
-        echo "cad_avg=$AVG" >> $GITHUB_OUTPUT
-
-    - name: Get Cameroon USDT/XAF Sell Orders
-      id: cameroon_sell
-      run: |
-        DATA=$(curl -s -f -X POST "https://www.okx.com/api/v5/rfq/p2p/adv/search" \
-          -H "Content-Type: application/json" \
-          -d '{
-            "cryptoCurrency": "USDT",
-            "fiatCurrency": "XAF",
-            "tradeType": "SELL",
-            "paymentMethod": "All",
-            "page": 1,
-            "rows": 20
-          }')
-
-        if [ -z "$DATA" ] || [ "$DATA" = "null" ] || [ "$(echo $DATA | jq '.data | length')" = "0" ]; then
-          echo "Erreur: Pas d'annonces Cameroun"
-          exit 1
-        fi
-
-        # Filtrer: pas d'annonces sponsorisées, région Cameroun uniquement, moyenne pondérée
-        AVG=$(echo $DATA | jq '[.data[] | select(.adv.isPromoted == false and (.adv.merchant.region == "Cameroon" or .adv.merchant.country == "CM")) | 
-                {price: (.adv.price | tonumber), amount: (.adv.surplusAmount | tonumber)}] | 
-                map(.price * .amount) | add / map(.amount) | add')
-
-        if [ -z "$AVG" ] || [ "$AVG" = "null" ]; then
-          echo "Erreur: Calcul moyenne Cameroun échoué"
-          exit 1
-        fi
-
-        echo "Cameroun Sell AVG: $AVG XAF"
-        echo "xaf_avg=$AVG" >> $GITHUB_OUTPUT
-
-    - name: Calculate Final Rate with 3% Fee
-      id: calculate
-      run: |
-        CAD_AVG=${{ steps.canada_buy.outputs.cad_avg }}
-        XAF_AVG=${{ steps.cameroon_sell.outputs.xaf_avg }}
-
-        # Taux brut: combien de XAF pour 1 CAD
-        GROSS_RATE=$(echo "scale=4; $XAF_AVG / $CAD_AVG" | bc -l)
-
-        # Appliquer 3% de frais
-        FINAL_RATE=$(echo "scale=2; $GROSS_RATE * 0.97" | bc -l)
-        FEE_AMOUNT=$(echo "scale=2; $GROSS_RATE * 0.03" | bc -l)
-
-        echo "Taux brut: $GROSS_RATE XAF/CAD"
-        echo "Frais 3%: $FEE_AMOUNT XAF"
-        echo "Taux final client: $FINAL_RATE XAF/CAD"
-        
-        echo "gross_rate=$GROSS_RATE" >> $GITHUB_OUTPUT
-        echo "final_rate=$FINAL_RATE" >> $GITHUB_OUTPUT
-        echo "fee_amount=$FEE_AMOUNT" >> $GITHUB_OUTPUT
-
-    - name: Send to Telegram
-      env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: |
-        MESSAGE="💱 Taux USDT Canada → Cameroun%0A%0A"
-        MESSAGE+="Canada Achat: ${{ steps.canada_buy.outputs.cad_avg }} CAD%0A"
-        MESSAGE+="Cameroun Vente: ${{ steps.cameroon_sell.outputs.xaf_avg }} XAF%0A%0A"
-        MESSAGE+="Taux brut: ${{ steps.calculate.outputs.gross_rate }} XAF/CAD%0A"
-        MESSAGE+="Frais 3%: ${{ steps.calculate.outputs.fee_amount }} XAF%0A"
-        MESSAGE+="💰 Taux client: ${{ steps.calculate.outputs.final_rate }} XAF/CAD"
-
-        curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-          -d chat_id="${TELEGRAM_CHAT_ID}" \
-          -d text="$MESSAGE"
+                {price: (.
