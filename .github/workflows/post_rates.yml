@@ -2,7 +2,7 @@ name: taux change Canada-Cameroun
 
 on:
   schedule:
-    - cron: '*/10 *' # toutes les 10 min
+    - cron: '0 * * * *' # toutes les 10 min
   workflow_dispatch:
 
 jobs:
