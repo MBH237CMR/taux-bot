@@ -2,7 +2,7 @@ name: Post Rates Canada to Cameroon
 
 on:
   schedule:
-    - cron: '0 * * * *' # toutes les heures
+    - cron: '0 *'
   workflow_dispatch:
 
 jobs:
@@ -26,14 +26,14 @@ jobs:
             "payment": []
           }')
 
-        AVG=$(echo "$DATA" | jq '[.result.items[] | select(.status==1) | 
-                {price: (.price | tonumber), amount: (.surplusAmount | tonumber)}] | 
-                if length > 0 then map(.price * .amount) | add / map(.amount) | add else 1.35 end')
+        AVG=$(echo "$DATA" | jq '[.result.items[] | select(.status==1 and .advertiser?.user?.advertising==false) | 
+                {price: (.price | tonumber)}] | 
+                if length > 0 then map(.price) | add / length else 1.36 end')
 
         echo "Canada Rate: $AVG CAD"
         echo "cad_rate=$AVG" >> $GITHUB_OUTPUT
 
-    - name: Get Cameroon USDT/XAF Sell Rate from Bybit
+    - name: Get Cameroon USDT/XAF Sell Rate from Bybit - Top 3 advertisers only
       id: cameroon_sell
       run: |
         DATA=$(curl -s -X POST "https://api2.bybit.com/fiat/otc/item/online" \
@@ -46,13 +46,18 @@ jobs:
             "side": "0",
             "size": "10",
             "page": "1",
-            "payment": [],
+            "payment": ["111", "112"],
             "country": "CM"
           }')
 
-        AVG=$(echo "$DATA" | jq '[.result.items[] | select(.status==1) | 
-                {price: (.price | tonumber), amount: (.surplusAmount | tonumber)}] | 
-                if length > 0 then map(.price * .amount) | add / map(.amount) | add else 700 end')
+        echo "Top 3 Cameroon advertisers:"
+        echo "$DATA" | jq '.result.items[0:3] | 
+          map({name: .advertiser.user.nickName, price: .price, amount: .surplusAmount})'
+
+        AVG=$(echo "$DATA" | jq '[.result.items[0:3] | 
+                .[] | select(.status==1 and .advertiser?.user?.advertising==false) | 
+                (.price | tonumber)] | 
+                if length > 0 then add / length else 560 end')
 
         echo "Cameroon Rate: $AVG XAF"
         echo "xaf_avg=$AVG" >> $GITHUB_OUTPUT
@@ -74,10 +79,10 @@ jobs:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
-        MESSAGE="💱 Taux Bybit P2P Canada → Cameroun%0A%0A"
+        MESSAGE="💱 *Taux Bybit P2P Canada → Cameroun*%0A%0A"
         MESSAGE+="Canada Achat: ${{ steps.canada_buy.outputs.cad_rate }} CAD%0A"
         MESSAGE+="Cameroun Vente: ${{ steps.cameroon_sell.outputs.xaf_avg }} XAF%0A"
-        MESSAGE+="💰 Taux client -3%: ${{ steps.calculate.outputs.final_rate }} XAF/CAD"
+        MESSAGE+="💰 *Taux plaisir -3%*: ${{ steps.calculate.outputs.final_rate }} XAF/CAD"
 
         curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
           -d chat_id="${TELEGRAM_CHAT_ID}" \
