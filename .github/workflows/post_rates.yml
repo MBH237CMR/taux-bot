@@ -55,12 +55,11 @@ jobs:
           
           MESSAGE="💱 Arbitrage Canada → Cameroun
           
-1 CAD = ${FINAL_RATE} XAF
+1 CAD = ${FINAL_RATE} XAF"
 Taux Canada: ${CAD_RATE} CAD/USDT
 Taux Cameroun: ${XAF_RATE} XAF/USDT
-Marge appliquée: 3%
-          
-Mise à jour: $(TZ=Africa/Douala date '+%H:%M')"
+Marge appliquée: 3%     
+Mise à jour: $(TZ=Africa/Douala date '+%H:%M')
 
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
             -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
