@@ -20,7 +20,10 @@ jobs:
           if [ $? -ne 0 ]; then echo "Erreur curl Canada"; exit 1; fi
           AVG=$(echo "$DATA" | jq '[.data[] | select(.adv.isPromoted == false)] | .[0:5] | map((.adv.price | tonumber) * (.adv.surplusAmount | tonumber)) | add / map(.adv.surplusAmount | tonumber) | add')
           echo "avg=$AVG" >> $GITHUB_OUTPUT
-
+          if [ "$DATA" = "[]" ] || [ -z "$DATA" ]; then
+          echo "Erreur: Binance n'a rien retourne"
+          exit 1
+          fi
       - name: Get Cameroon USDT/XAF P2P data
         id: cameroon
         run: |
