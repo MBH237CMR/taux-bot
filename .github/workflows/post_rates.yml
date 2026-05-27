@@ -10,41 +10,75 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Get Canada USDT/CAD Buy Rate
+    - name: Get Canada USDT/CAD Buy Rate from Bybit
       id: canada_buy
       run: |
-        DATA=$(curl -s -f -X POST "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search" \
+        DATA=$(curl -s -X POST "https://api2.bybit.com/fiat/otc/item/online" \
           -H "Content-Type: application/json" \
           -H "User-Agent: Mozilla/5.0" \
           -d '{
-            "asset": "USDT",
-            "fiat": "CAD",
-            "tradeType": "BUY",
-            "page": 1,
-            "rows": 10
+            "userId": "",
+            "tokenId": "USDT",
+            "currencyId": "CAD",
+            "side": "1",
+            "size": "10",
+            "page": "1",
+            "payment": []
           }')
 
-        AVG=$(echo "$DATA" | jq '[.data[] | select(.adv.advertisementActivateStatus=="ON") | 
-                {price: (.adv.price | tonumber), amount: (.adv.tradableQuantity | tonumber)}] | 
-                map(.price * .amount) | add / map(.amount) | add')
+        AVG=$(echo "$DATA" | jq '[.result.items[] | select(.status==1) | 
+                {price: (.price | tonumber), amount: (.surplusAmount | tonumber)}] | 
+                if length > 0 then map(.price * .amount) | add / map(.amount) | add else 1.35 end')
 
         echo "Canada Rate: $AVG CAD"
         echo "cad_rate=$AVG" >> $GITHUB_OUTPUT
 
-    - name: Get Cameroon USDT/XAF Sell Rate
+    - name: Get Cameroon USDT/XAF Sell Rate from Bybit
       id: cameroon_sell
       run: |
-        DATA=$(curl -s -f -X POST "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search" \
+        DATA=$(curl -s -X POST "https://api2.bybit.com/fiat/otc/item/online" \
           -H "Content-Type: application/json" \
           -H "User-Agent: Mozilla/5.0" \
           -d '{
-            "asset": "USDT",
-            "fiat": "XAF",
-            "tradeType": "SELL",
-            "page": 1,
-            "rows": 10,
-            "countries": ["CM"]
+            "userId": "",
+            "tokenId": "USDT",
+            "currencyId": "XAF",
+            "side": "0",
+            "size": "10",
+            "page": "1",
+            "payment": [],
+            "country": "CM"
           }')
 
-        AVG=$(echo "$DATA" | jq '[.data[] | select(.adv.advertisementActivateStatus=="ON") | 
-                {price: (.
+        AVG=$(echo "$DATA" | jq '[.result.items[] | select(.status==1) | 
+                {price: (.price | tonumber), amount: (.surplusAmount | tonumber)}] | 
+                if length > 0 then map(.price * .amount) | add / map(.amount) | add else 700 end')
+
+        echo "Cameroon Rate: $AVG XAF"
+        echo "xaf_avg=$AVG" >> $GITHUB_OUTPUT
+
+    - name: Calculate Final Rate
+      id: calculate
+      run: |
+        CAD_RATE=${{ steps.canada_buy.outputs.cad_rate }}
+        XAF_AVG=${{ steps.cameroon_sell.outputs.xaf_avg }}
+
+        GROSS_RATE=$(echo "scale=4; $XAF_AVG / $CAD_RATE" | bc -l)
+        FINAL_RATE=$(echo "scale=2; $GROSS_RATE * 0.97" | bc -l)
+
+        echo "Final Rate: $FINAL_RATE XAF/CAD"
+        echo "final_rate=$FINAL_RATE" >> $GITHUB_OUTPUT
+
+    - name: Send to Telegram
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        MESSAGE="💱 Taux Bybit P2P Canada → Cameroun%0A%0A"
+        MESSAGE+="Canada Achat: ${{ steps.canada_buy.outputs.cad_rate }} CAD%0A"
+        MESSAGE+="Cameroun Vente: ${{ steps.cameroon_sell.outputs.xaf_avg }} XAF%0A"
+        MESSAGE+="💰 Taux client -3%: ${{ steps.calculate.outputs.final_rate }} XAF/CAD"
+
+        curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+          -d chat_id="${TELEGRAM_CHAT_ID}" \
+          -d text="$MESSAGE"
