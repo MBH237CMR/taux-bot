@@ -23,19 +23,19 @@ def send_telegram(message):
 def main():
     rate_google = get_google_rate()
     
-    # Calcul interne seulement: +0.55% SANS arrondi
-    tx = rate_google * 1.0055
+    # Calcul interne seulement: +1.04% SANS arrondi
+    tx = rate_google * 1.0104
     
     date_now = datetime.now().strftime("%d/%m/%Y %H:%M")
     
-    # Format client SANS détail de calcul et SANS round
+    # Format client SANS détail de calcul
     message = f"<b>💱 Taux CAD → XAF {date_now}</b>\n\n"
     message += f"🇨🇦 1 CAD = <b>{tx} XAF</b> 🇨🇲\n"
     message += f"🇨🇦 100 CAD = <b>{tx * 100} XAF</b> 🇨🇲\n"
     message += f"🇨🇦 500 CAD = <b>{tx * 500} XAF</b> 🇨🇲"
     
     send_telegram(message)
-    print(f"Taux Google: {rate_google} | Taux envoyé: {tx}")
+    print(f"Taux Google: {rate_google} | Taux envoyé +1.04%: {tx}")
 
 if __name__ == "__main__":
     main()
