@@ -24,7 +24,7 @@ def main():
     rate_google = get_google_rate()
     
     # Calcul interne: +1.06% SANS arrondi
-    tx = rate_google * 1.0109
+    tx = rate_google * 1.0110
     
     date_now = datetime.now().strftime("%d/%m/%Y %H:%M")
     
