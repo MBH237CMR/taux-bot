@@ -5,14 +5,25 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 def get_tx():
-    r = requests.get("https://api.exchangerate.host/latest?base=CAD&symbols=XAF", timeout=10)
+    # API plus stable : exchangerate-api.com
+    url = "https://api.exchangerate-api.com/v4/latest/CAD"
+    r = requests.get(url, timeout=10)
     r.raise_for_status()
-    rate_google = float(r.json()["rates"]["XAF"])
+    data = r.json()
+    
+    # Sécurité si l’API répond mal
+    if "rates" not in data or "XAF" not in data["rates"]:
+        raise ValueError(f"API a renvoyé: {data}")
+    
+    rate_google = float(data["rates"]["XAF"])
+    
+    # Tx = Taux Google + 0,55%
     tx = rate_google * 1.0055
     return tx
 
 def main():
     tx = get_tx()
+    
     msg = f"""🇨🇦🇨🇲Taux de change Live🇨🇦🇨🇲
            💰 ♻️💲
 
