@@ -60,7 +60,7 @@ jobs:
                 (.price | tonumber)] | 
                 if length > 0 then add / length else 560 end')
 
-        echo "Cameroon Rate: $AVG XAF"
+        echo "Cameroon Rate: $AVG XAF*5%"
         echo "xaf_avg=$AVG" >> $GITHUB_OUTPUT
 
     - name: Calculate Final Rate
