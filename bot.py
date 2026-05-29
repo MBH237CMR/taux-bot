@@ -1,40 +1,56 @@
 import os
 import requests
+from bs4 import BeautifulSoup
+import telebot
 from datetime import datetime
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")  # ta discussion privée
-TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")  # nouveau: ID du canal
+# Récupère les secrets GitHub
+TOKEN = os.getenv('TELEGRAM_TOKEN')
+CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')  # Ton ID perso pour les tests
+CHANNEL_ID = os.getenv('TELEGRAM_CHANNEL_ID')  # -1004220934501
 
-def get_google_rate():
-    url = "https://api.exchangerate-api.com/v4/latest/CAD"
-    r = requests.get(url, timeout=10)
-    r.raise_for_status()
-    return r.json()["rates"]["XAF"]
+bot = telebot.TeleBot(TOKEN)
 
-def send_telegram(message, chat_id):
-    if not TELEGRAM_TOKEN or not chat_id:
-        print("Token ou Chat ID manquant")
-        return
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": chat_id, "text": message, "parse_mode": "HTML"}
-    r = requests.post(url, json=payload, timeout=10)
-    print(f"Envoi vers {chat_id}: Status {r.status_code}")
+def get_taux_cad_xaf():
+    """Récupère le taux CAD vers XAF - adapte l'URL selon ta source"""
+    try:
+        url = "https://www.xe.com/currencyconverter/convert/?Amount=1&From=CAD&To=XAF"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        r = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        
+        # Adapte le sélecteur selon le site que tu scrapes
+        taux = soup.find('p', {'class': 'result__BigRate-sc-1bsijpp-1'}).text.strip()
+        return taux
+    except:
+        return "Erreur récupération taux"
 
-def main():
-    rate_google = get_google_rate()
-    tx = rate_google * 1.0106  # 1.06%
-    date_now = datetime.now().strftime("%d/%m/%Y %H:%M")
-    
-    message = f"<b>💱 Taux CAD → XAF {date_now}</b>\n\n"
-    message += f"🇨🇦 1 CAD = <b>{tx:.2f} XAF</b> 🇨🇲\n"
-    message += f"🇨🇦 100 CAD = <b>{tx * 100:.2f} XAF</b> 🇨🇲\n"
-    message += f"🇨🇦 500 CAD = <b>{tx * 500:.2f} XAF</b> 🇨🇲"
-    
-    # Envoie à toi
-    send_telegram(message, TELEGRAM_CHAT_ID)
-    # Envoie au canal
-    send_telegram(message, TELEGRAM_CHANNEL_ID)
+def send_to_telegram(message):
+    """Envoie à toi + au canal"""
+    try:
+        # 1. Envoi en privé pour test
+        if CHAT_ID:
+            bot.send_message(chat_id=CHAT_ID, text=message, parse_mode='HTML')
+            print(f"Envoyé à CHAT_ID: {CHAT_ID}")
+        
+        # 2. Envoi dans le canal - LA LIGNE CLÉ
+        if CHANNEL_ID:
+            bot.send_message(chat_id=CHANNEL_ID, text=message, parse_mode='HTML')
+            print(f"Envoyé au canal: {CHANNEL_ID}")
+            
+    except Exception as e:
+        print(f"Erreur Telegram: {e}")
 
 if __name__ == "__main__":
-    main()
+    taux = get_taux_cad_xaf()
+    date = datetime.now().strftime("%d/%m/%Y %H:%M")
+    
+    message = f"""💱 <b>Taux CAD → XAF Live</b> 💱
+    
+1 CAD = {taux} XAF
+
+📅 Mise à jour: {date}
+#CADCFA #TauxDuJour"""
+    
+    send_to_telegram(message)
+    print("Terminé !")
