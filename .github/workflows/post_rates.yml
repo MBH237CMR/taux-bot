@@ -20,7 +20,7 @@ jobs:
           
       - name: Install dependencies
         run: |
-          pip install python-telegram-bot requests beautifulsoup4
+          pip install pyTelegramBotAPI requests beautifulsoup4
           
       - name: Run bot
         env:
