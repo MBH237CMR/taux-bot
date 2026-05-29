@@ -1,20 +1,30 @@
-name: Post CAD XAF Rate
+name: Taux CAD-XAF
 
 on:
   schedule:
-    - cron: '0 * * * *'
-  workflow_dispatch:
+    - cron: '0 */3 *'  # Toutes les 3h
+  workflow_dispatch:  # Bouton pour lancer manuellement
 
 jobs:
-  post:
+  scrape:
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install requests
-      - run: python bot.py
+          
+      - name: Install dependencies
+        run: |
+          pip install python-telegram-bot requests beautifulsoup4
+          
+      - name: Run bot
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}  # AJOUTE CETTE LIGNE
+        run: python bot.py
