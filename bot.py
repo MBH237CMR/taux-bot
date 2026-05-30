@@ -1,51 +1,76 @@
 import os
-import telebot
 import requests
-import math
 from datetime import datetime
+import math
 
-TOKEN = os.getenv('TELEGRAM_TOKEN')
-CHANNEL_ID = os.getenv('TELEGRAM_CHANNEL_ID')
-bot = telebot.TeleBot(TOKEN)
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+TELEGRAM_CHANNEL_ID = os.getenv('TELEGRAM_CHANNEL_ID')
+WHATSAPP_TOKEN = os.getenv('WHATSAPP_TOKEN')
+WHATSAPP_CHANNEL_ID = os.getenv('WHATSAPP_CHANNEL_ID')
+
+bot = requests.Session()
 
 def arrondi_perso(valeur):
-    """Règle maison : 411,05→411 | 411,06→412 | 411,07→412"""
-    entiere = math.floor(valeur)
-    decimale = valeur - entiere
-    return entiere + 1 if decimale >= 0.06 else entiere
+    """Arrondi perso : <1000 = 0 décimales, >=1000 = pas de décimales"""
+    if valeur < 1000:
+        return round(valeur)
+    return int(valeur)
 
 def get_taux_cad_xaf():
-    """Taux API + 0.7% + arrondi perso"""
     try:
-        r = requests.get("https://api.exchangerate-api.com/v4/latest/CAD", timeout=15)
-        r.raise_for_status()
-        taux_base = float(r.json()['rates']['XAF'])
-        taux_final = arrondi_perso(taux_base * 1.007)
-        print(f"Base: {taux_base} | Final: {taux_final}")
-        return taux_final
-    except Exception as e:
-        print(f"Erreur: {e}")
+        url = "https://api.exchangerate-api.com/v4/latest/CAD"
+        r = requests.get(url, timeout=10)
+        data = r.json()
+        return data['rates']['XAF']
+    except:
         return None
 
-def send_to_telegram():
+def send_telegram(msg):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    data = {"chat_id": TELEGRAM_CHANNEL_ID, "text": msg}
+    try:
+        requests.post(url, data=data, timeout=10)
+        print("Telegram OK")
+    except Exception as e:
+        print(f"Erreur Telegram: {e}")
+
+def send_whatsapp_channel(msg):
+    url = f"https://graph.facebook.com/v20.0/{WHATSAPP_CHANNEL_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "messaging_product": "whatsapp",
+        "to": WHATSAPP_CHANNEL_ID,
+        "type": "text",
+        "text": {"body": msg}
+    }
+    try:
+        r = requests.post(url, headers=headers, json=data, timeout=15)
+        print(f"WhatsApp Channel: {r.status_code}")
+    except Exception as e:
+        print(f"Erreur WhatsApp: {e}")
+
+def main():
     taux = get_taux_cad_xaf()
     date = datetime.now().strftime('%d/%m/%Y %H:%M')
     
     if taux is None:
-        msg = f"❌ Erreur taux\n{date}"
+        msg = f"❌ Erreur récupération taux\n📅 {date}"
     else:
         msg = f"""💱 Taux CAD → XAF
 
-1 CAD = {taux} XAF
+1 CAD = {taux:.2f} XAF
 
 💰 100 CAD = {arrondi_perso(taux * 100)} XAF
-💰 500 CAD = {arrondi_perso(taux * 500)} XAF
+💰 500 CAD = {arrondi_perso(taux * 500)} XAF  
 💰 1000 CAD = {arrondi_perso(taux * 1000)} XAF
 
 📅 {date}"""
 
-    bot.send_message(chat_id=CHANNEL_ID, text=msg)
-    print("Message envoyé")
+    send_telegram(msg)
+    send_whatsapp_channel(msg)
 
 if __name__ == "__main__":
-    send_to_telegram()
+    main()
